@@ -11,7 +11,9 @@ const errorHandler = (error, req, res, next) => {
   } else if (error.name === "ValidationError") {
     return res
       .status(400)
-      .json({ error: "Blog must include title, author, and url" });
+      .json({
+        error: "Blog must include title, author, url, and non-negative likes",
+      });
   }
   next(error);
 };
