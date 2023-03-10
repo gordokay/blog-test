@@ -69,6 +69,23 @@ describe("user creation", () => {
     expect(names).not.toContain("newName");
     expect(res.body.error).toContain("Username required");
   });
+
+  test("user with duplicate username cannot be created", async () => {
+    const usersAtStart = await helper.usersInDb();
+    const newUser = {
+      name: "newName",
+      username: "username",
+      password: "newPassword",
+    };
+
+    const res = await api.post("/api/users").send(newUser).expect(400);
+
+    const usersAtEnd = await helper.usersInDb();
+    const names = usersAtEnd.map((user) => user.name);
+    expect(usersAtEnd).toHaveLength(usersAtStart.length);
+    expect(names).not.toContain("newName");
+    expect(res.body.error).toContain("expected `username` to be unique");
+  });
 });
 
 afterAll(async () => {
