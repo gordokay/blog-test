@@ -17,6 +17,52 @@ beforeEach(async () => {
   await user.save();
 });
 
+describe("initial database state", () => {
+  test("users are returned as json", async () => {
+    await api
+      .get("/api/users")
+      .expect(200)
+      .expect("Content-Type", /application\/json/);
+  });
+
+  test("all users are returned", async () => {
+    const usersInDb = await helper.usersInDb();
+    const res = await api.get("/api/users");
+    expect(res.body).toHaveLength(usersInDb.length);
+  });
+
+  test("user with username 'username' is returned", async () => {
+    const res = await api.get("/api/users");
+    const usernames = res.body.map((user) => user.username);
+    expect(usernames).toContain("username");
+  });
+
+  test("users are returned without passwordHash properties", async () => {
+    const res = await api.get("/api/users");
+    const user = res.body[0];
+    expect(user.passwordHash).not.toBeDefined();
+  });
+});
+
+describe("getting individual user", () => {
+  test("an individual user can be returned", async () => {
+    const usersInDb = await helper.usersInDb();
+    const user = usersInDb[0];
+    const res = await api.get(`/api/users/${user.id}`).expect(200);
+    expect(res.body).toEqual(user);
+  });
+
+  test("fails with nonexistent id", async () => {
+    const nonexistentId = await helper.nonexistentId();
+    await api.get(`/api/users/${nonexistentId}`).expect(404);
+  });
+
+  test("fails with invalid id", async () => {
+    const id = "123";
+    await api.get(`/api/users/${id}`).expect(400);
+  });
+});
+
 describe("user creation", () => {
   test("valid user can be created", async () => {
     const usersAtStart = await helper.usersInDb();
