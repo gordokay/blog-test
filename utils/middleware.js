@@ -9,11 +9,9 @@ const errorHandler = (error, req, res, next) => {
   if (error.name === "CastError") {
     return res.status(400).json({ error: "Malformed id" });
   } else if (error.name === "ValidationError") {
-    return res
-      .status(400)
-      .json({
-        error: "Blog must include title, author, url, and non-negative likes",
-      });
+    return res.status(400).json({
+      error: error.message,
+    });
   }
   next(error);
 };
