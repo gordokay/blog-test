@@ -3,19 +3,23 @@ const mongoose = require("mongoose");
 const blogSchema = new mongoose.Schema({
   title: {
     type: String,
-    required: true,
+    required: [true, "Title required"],
   },
   author: {
     type: String,
-    required: true,
+    required: [true, "Author required"],
   },
   url: {
     type: String,
-    required: true,
+    required: [true, "Url required"],
   },
   likes: {
     type: Number,
-    min: 0,
+    min: [0, "Likes must be non-negative"],
+  },
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
   },
 });
 
