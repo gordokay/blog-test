@@ -3,13 +3,13 @@ const User = require("../models/user");
 const bcrypt = require("bcrypt");
 
 usersRouter.get("/", async (req, res) => {
-  const users = await User.find({});
+  const users = await User.find({}).populate("blogs", { title: 1, url: 1 });
   res.json(users);
 });
 
 usersRouter.get("/:id", async (req, res) => {
   const id = req.params.id;
-  const user = await User.findById(id);
+  const user = await User.findById(id).populate("blogs", { title: 1, url: 1 });
   if (!user) {
     return res.status(404).json({ error: "User not found" });
   }

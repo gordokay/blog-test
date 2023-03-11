@@ -17,7 +17,7 @@ const nonexistentId = async () => {
   await user.save();
   await User.deleteOne({ username: "b" });
 
-  return user._id.toString();
+  return user.id;
 };
 
 module.exports = { usersInDb, nonexistentId };

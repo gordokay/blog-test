@@ -26,7 +26,7 @@ const nonexistentId = async () => {
   await blog.save();
   await Blog.deleteOne({ title: "blog" });
 
-  return blog._id.toString();
+  return blog.id;
 };
 
 const blogsInDb = async () => {
