@@ -1,7 +1,9 @@
 const mongoose = require("mongoose");
 const supertest = require("supertest");
 const app = require("../app");
+const bcrypt = require("bcrypt");
 const Blog = require("../models/blog");
+const User = require("../models/user");
 const helper = require("./blogs-test-helper");
 const api = supertest(app);
 
@@ -63,6 +65,22 @@ describe("getting individual blog", () => {
 });
 
 describe("blog creation", () => {
+  let token;
+  beforeAll(async () => {
+    await User.deleteMany({});
+    const passwordHash = await bcrypt.hash("password", 10);
+    const user = new User({
+      name: "user",
+      username: "username",
+      passwordHash,
+    });
+
+    await user.save();
+    const res = await api
+      .post("/api/login")
+      .send({ username: "username", password: "password" });
+    token = res.body.token;
+  });
   test("a valid blog can be added", async () => {
     const newBlog = {
       title: "Canonical string reduction",
@@ -74,6 +92,7 @@ describe("blog creation", () => {
     await api
       .post("/api/blogs")
       .send(newBlog)
+      .set("Authorization", `Bearer ${token}`)
       .expect(201)
       .expect("Content-Type", /application\/json/);
 
@@ -94,6 +113,7 @@ describe("blog creation", () => {
     await api
       .post("/api/blogs")
       .send(newBlog)
+      .set("Authorization", `Bearer ${token}`)
       .expect(201)
       .expect("Content-Type", /application\/json/);
 
@@ -107,7 +127,11 @@ describe("blog creation", () => {
       author: "Robert C. Martin",
     };
 
-    const res = await api.post("/api/blogs").send(invalidBlog).expect(400);
+    const res = await api
+      .post("/api/blogs")
+      .send(invalidBlog)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(400);
 
     const newBlogs = await helper.blogsInDb();
     expect(newBlogs).toHaveLength(helper.initialBlogs.length);
@@ -122,11 +146,26 @@ describe("blog creation", () => {
       likes: -1000,
     };
 
-    const res = await api.post("/api/blogs").send(invalidBlog).expect(400);
+    const res = await api
+      .post("/api/blogs")
+      .send(invalidBlog)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(400);
 
     const newBlogs = await helper.blogsInDb();
     expect(newBlogs).toHaveLength(helper.initialBlogs.length);
     expect(res.body.error).toContain("Likes must be non-negative");
+  });
+
+  test("blog cannot be added without token", async () => {
+    const newBlog = {
+      title: "Canonical string reduction",
+      author: "Edsger W. Dijkstra",
+      url: "http://www.cs.utexas.edu/~EWD/transcriptions/EWD08xx/EWD808.html",
+      likes: 12,
+    };
+
+    await api.post("/api/blogs").send(newBlog).expect(401);
   });
 });
 
