@@ -13,6 +13,23 @@ beforeEach(async () => {
   await Promise.all(initialBlogs.map((blog) => blog.save()));
 });
 
+let token;
+beforeAll(async () => {
+  await User.deleteMany({});
+  const passwordHash = await bcrypt.hash("password", 10);
+  const user = new User({
+    name: "user",
+    username: "username",
+    passwordHash,
+  });
+
+  await user.save();
+  const res = await api
+    .post("/api/login")
+    .send({ username: "username", password: "password" });
+  token = res.body.token;
+});
+
 describe("initial database state", () => {
   test("blogs are returned as json", async () => {
     await api
@@ -65,22 +82,6 @@ describe("getting individual blog", () => {
 });
 
 describe("blog creation", () => {
-  let token;
-  beforeAll(async () => {
-    await User.deleteMany({});
-    const passwordHash = await bcrypt.hash("password", 10);
-    const user = new User({
-      name: "user",
-      username: "username",
-      passwordHash,
-    });
-
-    await user.save();
-    const res = await api
-      .post("/api/login")
-      .send({ username: "username", password: "password" });
-    token = res.body.token;
-  });
   test("a valid blog can be added", async () => {
     const newBlog = {
       title: "Canonical string reduction",
@@ -166,15 +167,50 @@ describe("blog creation", () => {
     };
 
     await api.post("/api/blogs").send(newBlog).expect(401);
+    const newBlogs = await helper.blogsInDb();
+    expect(newBlogs).toHaveLength(helper.initialBlogs.length);
+  });
+
+  test("blog canot be added with invalid token", async () => {
+    const newBlog = {
+      title: "Canonical string reduction",
+      author: "Edsger W. Dijkstra",
+      url: "http://www.cs.utexas.edu/~EWD/transcriptions/EWD08xx/EWD808.html",
+      likes: 12,
+    };
+
+    const res = await api
+      .post("/api/blogs")
+      .send(newBlog)
+      .set("Authorization", "Bearer 1234567")
+      .expect(401);
+
+    const newBlogs = await helper.blogsInDb();
+    expect(newBlogs).toHaveLength(helper.initialBlogs.length);
+    expect(res.body.error).toContain("jwt malformed");
   });
 });
 
 describe("blog deletion", () => {
-  test("a blog can be deleted", async () => {
-    const blogsAtStart = await helper.blogsInDb();
-    const blogToDelete = blogsAtStart[0];
+  test("a blog can be deleted by the user that created it", async () => {
+    const blog = {
+      title: "Canonical string reduction",
+      author: "Edsger W. Dijkstra",
+      url: "http://www.cs.utexas.edu/~EWD/transcriptions/EWD08xx/EWD808.html",
+    };
 
-    await api.delete(`/api/blogs/${blogToDelete.id}`).expect(204);
+    const res = await api
+      .post("/api/blogs")
+      .send(blog)
+      .set("Authorization", `Bearer ${token}`);
+
+    const blogsAtStart = await helper.blogsInDb();
+    const blogToDelete = res.body;
+
+    await api
+      .delete(`/api/blogs/${blogToDelete.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(204);
 
     const blogsAtEnd = await helper.blogsInDb();
     expect(blogsAtEnd).toHaveLength(blogsAtStart.length - 1);
@@ -183,27 +219,59 @@ describe("blog deletion", () => {
     expect(titles).not.toContain(blogToDelete.title);
   });
 
+  test("fails with unauthorized user", async () => {
+    const blogsAtStart = await helper.blogsInDb();
+    const blogToDelete = blogsAtStart[0];
+
+    const res = await api
+      .delete(`/api/blogs/${blogToDelete.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(401);
+
+    expect(res.body.error).toContain("Unauthorized command");
+    const blogsAtEnd = await helper.blogsInDb();
+    expect(blogsAtEnd).toHaveLength(blogsAtStart.length);
+  });
+
   test("deletion of a nonexistent blog does not change database state", async () => {
     const blogsAtStart = await helper.blogsInDb();
     const nonexistentId = await helper.nonexistentId();
-    await api.delete(`/api/blogs/${nonexistentId}`).expect(204);
+    await api
+      .delete(`/api/blogs/${nonexistentId}`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(204);
     const blogsAtEnd = await helper.blogsInDb();
     expect(blogsAtEnd).toHaveLength(blogsAtStart.length);
   });
 
   test("fails with invalid id", async () => {
     const id = "123";
-    await api.delete(`/api/blogs/${id}`).expect(400);
+    await api
+      .delete(`/api/blogs/${id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(400);
   });
 });
 
 describe("blog update", () => {
   test("a blog can be updated with a valid likes field", async () => {
-    const blogsAtStart = await helper.blogsInDb();
-    const blogToUpdate = blogsAtStart[0];
+    const newBlog = {
+      title: "Canonical string reduction",
+      author: "Edsger W. Dijkstra",
+      url: "http://www.cs.utexas.edu/~EWD/transcriptions/EWD08xx/EWD808.html",
+      likes: 12,
+    };
+
+    const res = await api
+      .post("/api/blogs")
+      .send(newBlog)
+      .set("Authorization", `Bearer ${token}`);
+
+    const blogToUpdate = res.body;
 
     await api
       .patch(`/api/blogs/${blogToUpdate.id}`)
+      .set("Authorization", `Bearer ${token}`)
       .send({ likes: 1000 })
       .expect(200);
 
@@ -215,11 +283,23 @@ describe("blog update", () => {
   });
 
   test("a blog will not be updated with a negative likes field", async () => {
-    const blogsAtStart = await helper.blogsInDb();
-    const blogToUpdate = blogsAtStart[0];
+    const newBlog = {
+      title: "Canonical string reduction",
+      author: "Edsger W. Dijkstra",
+      url: "http://www.cs.utexas.edu/~EWD/transcriptions/EWD08xx/EWD808.html",
+      likes: 12,
+    };
+
+    const res = await api
+      .post("/api/blogs")
+      .send(newBlog)
+      .set("Authorization", `Bearer ${token}`);
+
+    const blogToUpdate = res.body;
 
     await api
       .patch(`/api/blogs/${blogToUpdate.id}`)
+      .set("Authorization", `Bearer ${token}`)
       .send({ likes: -1000 })
       .expect(400);
 
@@ -232,12 +312,36 @@ describe("blog update", () => {
 
   test("fails with nonexistent blog", async () => {
     const nonexistentId = await helper.nonexistentId();
-    await api.patch(`/api/blogs/${nonexistentId}`).expect(404);
+    await api
+      .patch(`/api/blogs/${nonexistentId}`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(404);
   });
 
   test("fails with invalid id", async () => {
     const id = "123";
-    await api.patch(`/api/blogs/${id}`).expect(400);
+    await api
+      .patch(`/api/blogs/${id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(400);
+  });
+
+  test("fails with unauthorized user", async () => {
+    const blogsAtStart = await helper.blogsInDb();
+    const blogToUpdate = blogsAtStart[0];
+
+    const res = await api
+      .patch(`/api/blogs/${blogToUpdate.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ likes: 0 })
+      .expect(401);
+
+    const blogsAtEnd = await helper.blogsInDb();
+    const updatedBlog = blogsAtEnd.find(
+      (blog) => blog.title === blogToUpdate.title
+    );
+    expect(res.body.error).toContain("Unauthorized command");
+    expect(updatedBlog.likes).toBe(blogToUpdate.likes);
   });
 });
 

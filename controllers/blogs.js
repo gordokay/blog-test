@@ -43,8 +43,11 @@ blogsRouter.post("/", userExtractor, async (req, res) => {
 blogsRouter.delete("/:id", userExtractor, async (req, res) => {
   const id = req.params.id;
   const blog = await Blog.findById(id);
-  if (blog.user.toString() !== req.user) {
-    return res.status(404).json({ error: "Unauthorized command" });
+  if (!blog) {
+    return res.status(204).end();
+  }
+  if (!blog.user || blog.user.toString() !== req.user) {
+    return res.status(401).json({ error: "Unauthorized command" });
   }
   await Blog.findByIdAndDelete(id);
   res.status(204).end();
@@ -56,8 +59,8 @@ blogsRouter.patch("/:id", userExtractor, async (req, res) => {
   if (!blog) {
     return res.status(404).json({ error: "Blog not found" });
   }
-  if (blog.user.toString() !== req.user) {
-    return res.status(404).json({ error: "Unauthorized command" });
+  if (!blog.user || blog.user.toString() !== req.user) {
+    return res.status(401).json({ error: "Unauthorized command" });
   }
   const newLikes = {
     likes: req.body.likes,
